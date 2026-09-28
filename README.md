@@ -119,6 +119,22 @@ centred vertically, so the mouse crosses onto the phone without falling into a
 gap. Hyprland quantises fractional scales, so the script reads the *effective*
 scale back rather than trusting what it asked for.
 
+Two Hyprland behaviours make this less trivial than it looks, and both are
+handled in `scripts/poscalc.py`:
+
+- **Auto-layout displaces unpositioned outputs.** Any monitor with no explicit
+  position in your config is auto-placed by Hyprland, *after* manually
+  positioned ones. So placing the phone alone pushes your laptop panel sideways,
+  and each successive run walks the whole desktop further off. The script
+  re-pins the primary's own mode/position/scale before placing the phone.
+- **Geometry is logical, not mode, pixels.** A 1920x1080 panel at scale 1.25 is
+  1536x864 logical. Centring against the mode height instead leaves the phone
+  hanging below the laptop.
+
+With a 1920x1080 laptop at scale 1.25 and the phone at 2400x1080 scale 2, the
+result is `phone @ 1536x162` — a 1200x540 box, gap 0, vertically centred.
+Repeated runs are stable.
+
 You can also drive it directly:
 
 ```bash
@@ -176,6 +192,7 @@ hyprctl eval 'hl.dispatch(hl.dsp.cursor.move({ x = 2400, y = 432 }))'
 | `Panel.qml` | Drawer panel — status line, Start/Stop buttons, usage hint |
 | `scripts/phone-vnc-start.sh` | Creates the headless output, starts wayvnc, opens the tunnel |
 | `scripts/phone-vnc-stop.sh` | Tears down server, tunnel and output in the correct order |
+| `scripts/poscalc.py` | Position maths — places the phone flush against the laptop panel |
 | `scripts/install.sh` | Links both scripts into `~/.local/bin` |
 
 ## How the status probe works

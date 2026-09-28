@@ -45,49 +45,56 @@ else
   log "created headless output '$OUTPUT'"
 fi
 
-# --- size it ----------------------------------------------------------------
+# --- pin the primary, then size the phone -----------------------------------
 # Quattro parses Hyprland's Lua config, so `hyprctl keyword monitor` is
 # disabled; hl.monitor via `hyprctl eval` is the supported runtime idiom.
 #
-# Position is auto-computed unless PHONE_VNC_POS is set: the phone box is placed
-# flush against the right edge of the focused monitor and centred vertically.
-# Scale is NOT auto-computed — Hyprland quantises fractional values anyway, and
-# a gap between outputs stops the mouse crossing, so PHONE_VNC_SCALE is used
-# exactly as given.
-if [ -n "${PHONE_VNC_POS:-}" ]; then
-  POS="$PHONE_VNC_POS"
-else
-  # NOTE: pass values as argv, not as `VAR=x cmd | python3` — an env prefix
-  # applies only to the first command in a pipeline, so python would never see
-  # them.
-  POS="$(hyprctl monitors -j 2>/dev/null | python3 -c '
-import json, sys
-mode, scale, out = sys.argv[1], float(sys.argv[2]), sys.argv[3]
-mons = json.load(sys.stdin)
-primary = next((m for m in mons if m.get("focused")), None) or (mons[0] if mons else None)
-if not primary or primary.get("name") == out:
-    print("0x0"); raise SystemExit
-mode_h = int(mode.split("@")[0].split("x")[1])
-x = primary["x"] + primary["width"]
-y = primary["y"] + max(0, int((primary["height"] - mode_h / scale) // 2))
-print(f"{x}x{y}")
-' "$MODE" "$SCALE" "$OUTPUT")"
+# The position maths (including why the primary must be re-pinned) lives in
+# scripts/poscalc.py. Resolve symlinks first: this script is normally invoked
+# through ~/.local/bin, so ${BASH_SOURCE[0]} would point at the symlink and
+# dirname would give the wrong directory.
+SELF="$(readlink -f "${BASH_SOURCE[0]}")"
+POSCALC="$(dirname "$SELF")/poscalc.py"
+[ -f "$POSCALC" ] || die "poscalc.py not found next to this script ($POSCALC)"
+
+read -r POS PIN_MODE PIN_POS PIN_SCALE PIN_NAME < <(
+  hyprctl monitors -j 2>/dev/null | python3 "$POSCALC" "$MODE" "$SCALE" "$OUTPUT"
+)
+
+# Re-assert the primary's own mode/position/scale. Without this, Hyprland's
+# auto-layout displaces the laptop panel every time the phone is placed, and
+# successive runs walk the whole desktop sideways. Best-effort: if this fails
+# we still place the phone and verify the result below.
+if [ -n "${PIN_NAME:-}" ] && [ -n "${PHONE_VNC_POS:-}" = "" ]; then
+  hyprctl eval "hl.monitor({ output=\"$PIN_NAME\", mode=\"$PIN_MODE\", position=\"$PIN_POS\", scale=$PIN_SCALE })" \
+    >/dev/null 2>&1 || true
+  sleep 0.3
 fi
 
-# Hyprland quantises fractional scale — read the effective value back rather
-# than trusting what we asked for.
-EFFECTIVE_SCALE="$(hyprctl monitors -j | python3 -c '
-import json, sys
-for m in json.load(sys.stdin):
-    if m.get("name") == "'"$OUTPUT"'":
-        print(m.get("scale", 1)); break
-else:
-    print(1)
-')"
+# An explicit PHONE_VNC_POS overrides the computed position entirely.
+[ -n "${PHONE_VNC_POS:-}" ] && POS="$PHONE_VNC_POS"
 
 hyprctl eval "hl.monitor({ output=\"$OUTPUT\", mode=\"$MODE\", position=\"$POS\", scale=$SCALE })" >/dev/null \
   || die "could not size output '$OUTPUT'"
-log "output '$OUTPUT' at $MODE scale=$SCALE (effective $EFFECTIVE_SCALE) position=$POS"
+
+# Read the EFFECTIVE geometry back rather than trusting what we asked for.
+# Hyprland quantises fractional scales, and the apply is async, so give it a
+# moment before reading. Both width/height in `monitors -j` are MODE pixels —
+# divide by scale to get the logical box.
+sleep 0.5
+EFFECTIVE="$(hyprctl monitors -j 2>/dev/null | python3 -c '
+import json, sys
+want = sys.argv[1]
+for m in json.load(sys.stdin):
+    if m.get("name") == want:
+        s = float(m.get("scale") or 1)
+        w, h = int(m["width"] / s), int(m["height"] / s)
+        print("%dx%d logical, scale %s" % (w, h, m.get("scale")))
+        break
+else:
+    print("not found")
+' "$OUTPUT")"
+log "output '$OUTPUT' at $MODE position=$POS -> $EFFECTIVE"
 
 # --- start the capture ------------------------------------------------------
 # NOTE: the bar widget probes for the literal string "wayvnc -o $OUTPUT " in
@@ -96,11 +103,16 @@ wayvnc -o "$OUTPUT" -r -S "$SOCK" >/dev/null 2>&1 &
 sleep 1
 pgrep -f "[w]ayvnc -o $OUTPUT " >/dev/null 2>&1 || die "wayvnc failed to start (see $SOCK)"
 
-# Verify it really is capturing *this* output, not a stale one.
+# Verify it really is capturing THIS output, not a stale one. wayvncctl marks
+# the active line with a leading '*' and the line ends in ')', so match the
+# start of the line — matching a trailing '*' silently always fails.
 if command -v wayvncctl >/dev/null 2>&1; then
-  wayvncctl -S "$SOCK" output-list 2>/dev/null | grep -q '\*$' \
-    && log "capture confirmed active" \
-    || log "warning: capture is running but no active output reported"
+  active="$(wayvncctl -S "$SOCK" output-list 2>/dev/null | sed -n 's/^\* *//p' | cut -d: -f1)"
+  case "$active" in
+    "$OUTPUT"|"$OUTPUT ") log "capture confirmed active on '$OUTPUT'" ;;
+    "")                  log "warning: capture running but wayvncctl reported no active output" ;;
+    *)                   log "warning: capturing '$active', not '$OUTPUT'" ;;
+  esac
 fi
 log "wayvnc listening on 127.0.0.1:$PORT"
 

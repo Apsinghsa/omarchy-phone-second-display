@@ -7,6 +7,9 @@ set -euo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 target="$HOME/.local/bin"
 
+# Only the entry points get symlinked. phone-vnc-start finds poscalc.py by
+# resolving its own path with `readlink -f`, which lands back here in the repo,
+# so poscalc.py does not need to be linked into ~/.local/bin itself.
 mkdir -p "$target"
 for s in phone-vnc-start.sh phone-vnc-stop.sh; do
   ln -sf "$here/$s" "$target/${s%.sh}"
