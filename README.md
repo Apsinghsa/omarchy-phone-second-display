@@ -55,7 +55,25 @@ omarchy restart shell
 A compiled third-party bar widget does **not** hot-reload — `omarchy-shell
 rescanPlugins` will not replace already-compiled code, so the restart is required.
 
-To remove it:
+### Install the helper scripts
+
+Start/Stop shell out to `~/.local/bin/phone-vnc-start` and
+`~/.local/bin/phone-vnc-stop`. Link them from the cloned plugin directory — no
+path editing needed:
+
+```bash
+~/.config/omarchy/plugins/apsingh.phone-vnc/scripts/install.sh
+```
+
+or by hand:
+
+```bash
+mkdir -p ~/.local/bin
+ln -sf ~/.config/omarchy/plugins/apsingh.phone-vnc/scripts/phone-vnc-{start,stop}.sh \
+        ~/.local/bin/
+```
+
+To remove the plugin:
 
 ```bash
 omarchy plugin remove apsingh.phone-vnc
@@ -87,19 +105,67 @@ no-ops on the Lua build:
 hyprctl eval 'hl.dispatch(hl.dsp.window.move({ monitor="phone" }))'
 ```
 
-## Known limitation: the start/stop scripts
+## The helper scripts
 
-The widget's **Start** and **Stop** buttons shell out to two helper scripts:
+### `phone-vnc-start`
 
+1. Reuses or creates the headless output `phone`
+2. Sizes it via `hl.monitor` (see the Quattro note above)
+3. Starts `wayvnc -o phone -r -S $SOCK`, which binds `127.0.0.1:5900`
+4. Runs `adb reverse tcp:5900 tcp:5900` to open the USB tunnel
+
+The output is placed flush against the right edge of your primary monitor and
+centred vertically, so the mouse crosses onto the phone without falling into a
+gap. Hyprland quantises fractional scales, so the script reads the *effective*
+scale back rather than trusting what it asked for.
+
+You can also drive it directly:
+
+```bash
+phone-vnc-start   # bring the display up
+phone-vnc-stop    # tear it down
 ```
-/home/apsingh/.local/bin/phone-vnc-start
-/home/apsingh/.local/bin/phone-vnc-stop
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `PHONE_VNC_OUTPUT` | `phone` | headless output name |
+| `PHONE_VNC_MODE` | `2400x1080@60` | output mode — use `1080x2400@60` for portrait |
+| `PHONE_VNC_SCALE` | `2` | logical scale |
+| `PHONE_VNC_POS` | auto | `XxY` position override |
+| `PHONE_VNC_PORT` | `5900` | VNC port, forwarded to the phone |
+| `PHONE_VNC_SOCK` | `/tmp/phone-vnc.sock` | wayvnc control socket |
+
+### `phone-vnc-stop`
+
+Order matters, and it is not cosmetic: **wayvnc is stopped before the headless
+output is removed.** If you remove the output first, the phone keeps showing a
+frozen mirror of your desktop — it holds the last frame it was sent.
+
+Then the USB tunnel is dropped and the socket is removed. Safe to run when
+nothing is up.
+
+## Moving windows
+
+Window moves use the same Quattro `hl` API, because
+`hyprctl dispatch movewindowtomonitor` silently no-ops on the Lua build:
+
+```bash
+# active window to the phone
+hyprctl eval 'hl.dispatch(hl.dsp.window.move({ monitor = "phone" }))'
+# a specific app to the phone
+hyprctl eval 'hl.dispatch(hl.dsp.window.move({ monitor = "phone", window = "class:okular" }))'
+# back to the laptop
+hyprctl eval 'hl.dispatch(hl.dsp.window.move({ monitor = "eDP-1" }))'
+# move the keyboard/workspace focus to the phone
+hyprctl eval 'hl.dispatch(hl.dsp.focus({ monitor = "phone" }))'
 ```
 
-Those paths are hardcoded and specific to the machine this was developed on. If you
-clone this repo, install your own scripts at those paths or edit `startService()` and
-`stopService()` in `Widget.qml` to point at yours. The bar icon, status polling and
-panel all work without them — only the Start/Stop buttons depend on the scripts.
+To control the phone from the PC mouse, cross onto the phone's logical box and
+warp the cursor over explicitly if needed:
+
+```bash
+hyprctl eval 'hl.dispatch(hl.dsp.cursor.move({ x = 2400, y = 432 }))'
+```
 
 ## Files
 
@@ -108,6 +174,9 @@ panel all work without them — only the Start/Stop buttons depend on the script
 | `manifest.json` | Plugin manifest — id, entry points, bar widget metadata |
 | `Widget.qml` | Bar button, 3s status poll, start/stop service control |
 | `Panel.qml` | Drawer panel — status line, Start/Stop buttons, usage hint |
+| `scripts/phone-vnc-start.sh` | Creates the headless output, starts wayvnc, opens the tunnel |
+| `scripts/phone-vnc-stop.sh` | Tears down server, tunnel and output in the correct order |
+| `scripts/install.sh` | Links both scripts into `~/.local/bin` |
 
 ## How the status probe works
 

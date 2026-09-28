@@ -63,13 +63,15 @@ BarWidget {
     p.running = true
   }
 
+  // Scripts are installed to ~/.local/bin by the README's install step and are
+  // referenced through $HOME so this works for any user account.
   function startService() {
-    runAction("nohup /home/apsingh/.local/bin/phone-vnc-start >> /tmp/phone-vnc-plugin.log 2>&1 &")
+    runAction("nohup \"$HOME/.local/bin/phone-vnc-start\" >> \"${XDG_RUNTIME_DIR:-/tmp}/phone-vnc-plugin.log\" 2>&1 &")
     Qt.callLater(root.probe)
   }
 
   function stopService() {
-    runAction("/home/apsingh/.local/bin/phone-vnc-stop")
+    runAction("\"$HOME/.local/bin/phone-vnc-stop\"")
     Qt.callLater(root.probe)
   }
 
