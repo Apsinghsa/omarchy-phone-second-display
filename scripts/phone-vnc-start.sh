@@ -27,8 +27,8 @@ SOCK="${PHONE_VNC_SOCK:-/tmp/phone-vnc.sock}"
 log() { printf '[phone-vnc] %s\n' "$*"; }
 die() { printf '[phone-vnc] error: %s\n' "$*" >&2; exit 1; }
 
-for cmd in hyprctl wayvnc adb; do
-  command -v "$cmd" >/dev/null 2>&1 || die "missing '$cmd' — see README for install commands"
+for cmd in hyprctl wayvnc adb python3; do
+  command -v "$cmd" >/dev/null 2>&1 || die "missing '$cmd' — see README for install commands (pacman -S --needed ...)"
 done
 
 # --- already running? -------------------------------------------------------
