@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "id": "apsingh.phone-vnc",
+  "name": "Phone Second Display (VNC)",
+  "version": "0.1.0",
+  "author": "apsingh",
+  "license": "MIT",
+  "description": "WayVNC phone-as-second-display control: click opens a panel with Start/Stop buttons and live status (knows whether the VNC stream is running).",
+  "kinds": ["bar-widget"],
+  "entryPoints": {
+    "barWidget": "Widget.qml"
+  },
+  "barWidget": {
+    "displayName": "Phone Second Display (VNC)",
+    "description": "Start/stop the WayVNC phone second display and see its status. Start only works when the stream is down; Stop only when it's up.",
+    "category": "Status",
+    "aliases": ["second display", "vnc", "wayvnc", "phone display", "phone-vnc"],
+    "allowMultiple": false,
+    "defaultSection": "right"
+  }
+}

@@ -1,0 +1,10 @@
+# Omarchy plugin directories
+*.log
+*.bak.*
+*.aux
+*.out
+.qmlc/
+
+# Screenshots / scratch
+screenshot*.png
+*.tmp
